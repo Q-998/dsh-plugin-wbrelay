@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh wbrelay 通道面板</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --card2:#1d212b; --line:#2a2f3c;
+    --txt:#e8eaf0; --dim:#9aa3b5; --ok:#3ddc84; --warn:#ffb454; --bad:#ff5d73; --acc:#5b8cff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;padding:24px;max-width:1080px;margin:0 auto}
+  h1{font-size:22px;margin-bottom:4px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:20px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .card h2{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
+  .dot.ok{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+  .dot.warn{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+  .dot.bad{background:var(--bad);box-shadow:0 0 6px var(--bad)}
+  .row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px dashed var(--line)}
+  .row:last-child{border-bottom:none}
+  .k{color:var(--dim)}
+  .v{font-weight:600;text-align:right}
+  .v.ok{color:var(--ok)} .v.warn{color:var(--warn)} .v.bad{color:var(--bad)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{background:var(--card2);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:12px;color:var(--dim)}
+  .chip.hot{color:var(--acc);border-color:var(--acc)}
+  .big{font-size:26px;font-weight:700;margin:6px 0 2px}
+  .big.ok{color:var(--ok)} .big.warn{color:var(--warn)} .big.bad{color:var(--bad)}
+  .note{font-size:12px;color:var(--dim);margin-top:6px;line-height:1.6}
+  .btn{background:var(--acc);border:none;color:#fff;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;margin-top:10px}
+  .btn:active{opacity:.8}
+  .err{color:var(--bad);font-size:12px;margin-top:6px;word-break:break-all}
+  .guide{font-size:13px;color:var(--dim);line-height:2}
+  .guide b{color:var(--txt)}
+  code{background:var(--card2);border-radius:4px;padding:1px 6px;font-size:12px}
+  .head{display:flex;justify-content:space-between;align-items:flex-start}
+  .refresh{color:var(--dim);font-size:12px}
+</style>
+</head>
+<body>
+<div class="head">
+  <div>
+    <h1>dsh · wbrelay 直连通道面板</h1>
+    <div class="sub">dsh → 本地桥 → copilot.tencent.com（不经过 CodeBuddy agent）</div>
+  </div>
+  <div class="refresh" id="refreshInfo">…</div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2><span class="dot" id="d-cli"></span>CodeBuddy CLI（60622）</h2>
+    <div class="row"><span class="k">服务状态</span><span class="v" id="cli-svc">—</span></div>
+    <div class="row"><span class="k">登录状态</span><span class="v" id="cli-auth">—</span></div>
+    <div class="row"><span class="k">运行状态</span><span class="v" id="cli-run">—</span></div>
+    <div class="note">CLI 仅负责登录态与 token 自动刷新，模型流量不经过它。</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot" id="d-token"></span>上游 Token</h2>
+    <div class="row"><span class="k">状态</span><span class="v" id="tk-state">—</span></div>
+    <div class="big" id="tk-days">—</div>
+    <div class="note" id="tk-detail">—</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot" id="d-up"></span>上游连通（copilot.tencent.com）</h2>
+    <div class="row"><span class="k">最近探测</span><span class="v" id="up-at">—</span></div>
+    <div class="row"><span class="k">结果</span><span class="v" id="up-res">—</span></div>
+    <div class="row"><span class="k">延迟</span><span class="v" id="up-ms">—</span></div>
+    <button class="btn" onclick="loadStatus(true)">立即探测</button>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot" id="d-bridge"></span>直连桥（8790）</h2>
+    <div class="row"><span class="k">引擎</span><span class="v" id="br-engine">—</span></div>
+    <div class="row"><span class="k">运行时长</span><span class="v" id="br-uptime">—</span></div>
+    <div class="row"><span class="k">请求总数 / 成功 / 失败</span><span class="v" id="br-stats">—</span></div>
+    <div class="row"><span class="k">最近请求</span><span class="v" id="br-last">—</span></div>
+    <div class="err" id="br-err"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot" id="d-mitm"></span>Token 捕获代理（443）</h2>
+    <div class="row"><span class="k">443 监听</span><span class="v" id="m-up">—</span></div>
+    <div class="row"><span class="k">hosts 拦截</span><span class="v" id="m-hosts">—</span></div>
+    <div class="note">hosts 把 <code id="m-domain">copilot.tencent.com</code> 指到本地；代理捕获 Authorization 并透明转发。缺失时以管理员运行 <code>mitm\mitm-on.cmd</code>。</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot" id="d-plugin"></span>dsh 插件（dsh-plugin-wbrelay）</h2>
+    <div class="row"><span class="k">bundles 注册</span><span class="v" id="p-reg">—</span></div>
+    <div class="row"><span class="k">junction 链接</span><span class="v" id="p-junc">—</span></div>
+    <div class="note">配置由插件自带 patch 提供，dsh 升级不受影响。改 <code>dsh-plugin-wbrelay\cordis.patch.yml</code> 后重启 dsh 生效。</div>
+  </div>
+
+  <div class="card">
+    <h2>版本信息</h2>
+    <div class="row"><span class="k">当前版本</span><span class="v" id="p-version">1.0.0</span></div>
+    <button class="btn" type="button" onclick="getUpdate()">一键获取更新</button>
+    <div class="note" id="update-note">更新地址待配置，GitHub 发布后启用。</div>
+  </div>
+
+  <div class="card">
+    <h2>可用模型（wbrelay）</h2>
+    <div class="chips" id="models">…</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot" id="d-guide"></span>通道设置引导 <span class="v" id="g-title"></span></h2>
+    <div id="guide">…</div>
+    <div class="note">按顺序完成即可；全部 ✓ 后右上角按钮变绿。主机名：<code id="g-domain">copilot.tencent.com</code></div>
+  </div>
+
+  <div class="card">
+    <h2>备忘</h2>
+    <div class="guide">
+      <b>token 过期</b>（剩余 0 天 / 上游 401）：CLI 登录态刷新后自动恢复；长期 401 就重启通道<br>
+      <b>加模型</b>：编辑插件 <code>cordis.patch.yml</code> 的 wbrelay.models（若你自己的 patch 里有 llm-pi-ai 条目则改你那份），重启 dsh<br>
+      <b>回退旧架构</b>：删除 <code>dsh-channel.cmd</code> 中的 <code>--engine direct</code>；管理员运行 <code>mitm\mitm-off.cmd</code> 还原 hosts
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const setDot = (id, cls) => { $(id).className = 'dot ' + cls; };
+const setV = (id, text, cls) => { const e = $(id); e.textContent = text; e.className = 'v ' + (cls || ''); };
+const fmtMs = (ms) => {
+  if (ms == null) return '—';
+  const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60);
+  return h > 0 ? `${h}时${m % 60}分` : m > 0 ? `${m}分${s % 60}秒` : `${s}秒`;
+};
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleString('zh-CN', { hour12: false }) : '—';
+
+async function loadStatus(probe) {
+  try {
+    const r = await fetch('/api/status' + (probe ? '?probe=1' : ''), { cache: 'no-store' });
+    const s = await r.json();
+    render(s);
+    $('refreshInfo').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  } catch (e) {
+    $('refreshInfo').textContent = '桥连接失败：' + e.message;
+  }
+}
+
+function render(s) {
+  // CLI
+  const cliUp = s.cli.serviceUp;
+  setDot('d-cli', cliUp ? (s.cli.authOk ? 'ok' : 'warn') : 'bad');
+  setV('cli-svc', cliUp ? '运行中' : '未运行', cliUp ? 'ok' : 'bad');
+  setV('cli-auth', !cliUp ? '—（服务未运行）' : (s.cli.authOk ? '已登录 ✓' : '未登录'), cliUp ? (s.cli.authOk ? 'ok' : 'bad') : '');
+  setV('cli-run', s.cli.runStatus ? (s.cli.busy ? '执行中' : '空闲') : '—', s.cli.busy ? 'warn' : '');
+
+  // Token
+  const t = s.token;
+  if (!t.present) {
+    setDot('d-token', 'bad'); setV('tk-state', '未捕获', 'bad'); $('tk-days').textContent = '—';
+    $('tk-detail').textContent = '运行 dsh-channel.cmd 后在 dsh 里发一条消息即可捕获';
+  } else {
+    const dl = t.daysLeft;
+    const cls = dl > 7 ? 'ok' : dl > 2 ? 'warn' : 'bad';
+    setDot('d-token', cls); setV('tk-state', '有效', cls);
+    $('tk-days').textContent = '剩余 ' + dl + ' 天';
+    $('tk-days').className = 'big ' + cls;
+    $('tk-detail').innerHTML = `签发 ${fmtTime(t.iat ? new Date(t.iat * 1000).toISOString() : null)}<br>过期 ${fmtTime(t.exp ? new Date(t.exp * 1000).toISOString() : null)}<br>最近捕获 ${fmtTime(t.capturedAt)}（${t.capturedSource || ''}）`;
+  }
+
+  // 上游
+  const u = s.upstream;
+  if (u && u.at) {
+    setDot('d-up', u.ok ? 'ok' : 'bad');
+    setV('up-at', fmtTime(u.at));
+    setV('up-res', u.ok ? '连通 ✓ (HTTP ' + u.status + ')' : '失败 (' + u.status + ')', u.ok ? 'ok' : 'bad');
+    setV('up-ms', u.ms != null ? u.ms + ' ms' : '—');
+  }
+
+  // 桥
+  const b = s.bridge, st = b.stats;
+  setDot('d-bridge', b.engine === 'direct' ? 'ok' : 'warn');
+  setV('br-engine', b.engine === 'direct' ? 'direct（直连）' : b.engine, b.engine === 'direct' ? 'ok' : 'warn');
+  setV('br-uptime', fmtMs(b.uptimeMs));
+  setV('br-stats', `${st.total} / ${st.ok} / ${st.fail}`, st.fail > 0 ? 'warn' : 'ok');
+  setV('br-last', st.lastAt ? `${fmtTime(st.lastAt)} · ${st.lastModel || ''}` : '尚无请求');
+  const errorAt = Date.parse(st.lastErrorAt || '');
+  const successAt = Date.parse(st.lastSuccessAt || '');
+  const errorIsCurrent = st.lastOutcome === 'error'
+    || (st.lastOutcome !== 'ok' && Number.isFinite(errorAt)
+      && (!Number.isFinite(successAt) || errorAt >= successAt));
+  $('br-err').textContent = errorIsCurrent && st.lastError ? '最近错误：' + st.lastError : '';
+
+  // MITM
+  const mitmOk = s.mitm443.up, hostsOk = s.hosts.entry;
+  setDot('d-mitm', mitmOk ? (hostsOk ? 'ok' : 'warn') : 'bad');
+  setV('m-up', mitmOk ? '监听中' : '未监听', mitmOk ? 'ok' : 'bad');
+  setV('m-hosts', hostsOk == null ? '无法读取 hosts' : hostsOk ? '已生效 ✓' : '未生效（运行 mitm-on.cmd）', hostsOk ? 'ok' : 'bad');
+  $('m-domain').textContent = s.hosts.domain;
+
+  // 插件
+  const p = s.plugin;
+  const pOk = p.registered && p.junctionOk;
+  setDot('d-plugin', pOk ? 'ok' : 'warn');
+  setV('p-reg', p.registered ? '已注册 ✓' : '未注册', p.registered ? 'ok' : 'bad');
+  setV('p-junc', p.junctionOk ? '正常 ✓' : '缺失', p.junctionOk ? 'ok' : 'bad');
+  $('p-version').textContent = s.ver || '1.0.0';
+
+  // 引导清单
+  const g = $('guide');
+  $('g-domain').textContent = s.hosts.domain;
+  const ob = Array.isArray(s.onboarding) ? s.onboarding : [];
+  if (!ob.length) { g.innerHTML = '<span class="k">引导数据不可用</span>'; setDot('d-guide', 'warn'); return; }
+  const pend = ob.filter((x) => !x.ok).length;
+  const welcome = pend === ob.length
+    ? '<div class="note" style="background:var(--card2);border-radius:8px;padding:8px 10px;margin-bottom:10px">👋 <b>检测到首次安装</b>：按下面 <b>①→⑤</b> 顺序操作，每一步都有可点的按钮。全部 ✓ 后就能在 dsh 里直接对话。</div>'
+    : '';
+  const actions = {
+    'cli-install': ['/dsh-install-cli', '一键安装（打开执行窗口）'],
+    'cli-login': ['/dsh-open-cli', '打开 CLI 登录窗口'],
+    'hosts': ['/dsh-fix-hosts', '以管理员修复（UAC 确认）'],
+    'channel': ['/dsh-restart', '启动/重启通道'],
+  };
+  g.innerHTML = welcome + ob.map((x, i) => {
+    const act = actions[x.id];
+    const btn = (!x.ok && act) ? `<button class="btn" style="margin:0;padding:5px 10px;font-size:12px" onclick="postAction('${act[0]}',this)">${act[1]}</button>` : '';
+    const extra = (x.id === 'cli-login' && !x.ok) ? '<div class="note" style="margin-top:2px">登录完成后点第 ④ 步「启动/重启通道」让登录生效</div>' : '';
+    return `
+    <div class="row" style="align-items:flex-start;gap:8px">
+      <span class="dot ${x.ok ? 'ok' : 'bad'}" style="flex:none;margin-top:4px"></span>
+      <span style="flex:1"><b>第 ${i + 1} 步 · ${x.title}</b>${x.action ? `<div class="note" style="margin-top:2px">${x.action}</div>${extra}` : extra}</span>
+      ${x.ok ? '<span class="v ok">✓</span>' : btn}
+    </div>`;
+  }).join('');
+  setDot('d-guide', pend === 0 ? 'ok' : 'warn');
+  setV('g-title', pend === 0 ? '全部完成' : `还差 ${pend} 步`, pend === 0 ? 'ok' : 'warn');
+
+  // 模型
+  $('models').innerHTML = (s.models || []).map((m) => `<span class="chip${m === 'glm-5.3-flash' ? ' hot' : ''}">${m}</span>`).join('') || '（读取失败）';
+}
+
+function getUpdate() {
+  $('update-note').textContent = '更新地址待配置，GitHub 发布后启用。';
+}
+
+async function postAction(p, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '已触发…'; }
+  try { await fetch(p, { method: 'POST' }); } catch (e) { /* ignore */ }
+  setTimeout(() => loadStatus(false), 6000);
+}
+
+loadStatus(false);
+setInterval(() => loadStatus(false), 5000);
+
+loadStatus(false);
+setInterval(() => loadStatus(false), 5000);
+</script>
+</body>
+</html>
