@@ -180,7 +180,7 @@ minimal  low  medium  high  xhigh  max
 
 | 方法 | 路由 | 作用 |
 | --- | --- | --- |
-| `GET` | `/dsh-plugin-wbrelay/status` | 查询桥接、CLI、hosts、捕获代理、Token 时间戳和插件版本 |
+| `GET` | `/dsh-plugin-wbrelay/status` | 查询桥接、CLI、hosts、捕获代理和 Token 时间戳 |
 | `GET` | `/dsh-plugin-wbrelay/models` | 返回模型清单和原生推理同步状态 |
 | `POST` | `/dsh-plugin-wbrelay/models/refresh` | 强制刷新模型清单与能力 |
 | `POST` | `/dsh-plugin-wbrelay/start` | 启动本地服务 |
