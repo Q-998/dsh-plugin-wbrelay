@@ -222,7 +222,7 @@ openssl x509 -req -in srv.csr -CA ca.pem -CAkey ca.key -CAcreateserial `
 
 | 命令 | 作用 |
 | --- | --- |
-| `/wbrelay start` | 一键启动本地通道：先确保证书可用，再拉起 CLI 服务、443 捕获代理和 8790 桥接，并复查结果 |
+| `/wbrelay start` | 一键启动本地通道：先确保证书可用，再后台拉起 CLI 服务、443 捕获代理和 8790 桥接；缺 token 且 CLI 未登录时自动弹出 CLI 登录窗口 |
 | `/wbrelay status` | 汇报设备证书、桥接、CLI、捕获、hosts、token 与引导进度；别名 `st` |
 | `/wbrelay hosts` | 启用 hosts 捕获（弹出 UAC 确认） |
 | `/wbrelay delete` | 卸载插件：停服务、恢复 hosts、从 profile 注销、清理运行数据；别名 `uninstall` / `remove` |
@@ -256,6 +256,10 @@ openssl x509 -req -in srv.csr -CA ca.pem -CAkey ca.key -CAcreateserial `
 
 因此正常情况下**不需要**手动打开 CLI 发消息。面板与看板上的「捕获 token」按钮是同一流程
 （等价于 `node channel\orchestrator.cjs --token-only`），只在 hosts 未启用或 443 代理不可用时会抓不到 token。
+
+启动过程本身**不弹任何控制台窗口**：编排器由 node 直接拉起，CLI、捕获代理、桥都在后台隐藏运行。
+唯一会出现的窗口是按需弹出的 **CLI 登录窗口**——启动后发现 CLI 未登录或 token 缺失时会自动弹出
+（也可以从面板/看板的「CLI 登录」按钮手动打开）；在该窗口完成 `/login` 并随便发一条消息，token 就会自动被捕获。
 
 ## 模型能力
 
