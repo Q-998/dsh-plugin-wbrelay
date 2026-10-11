@@ -871,7 +871,9 @@ async function checkLatestVersion(force = false) {
     releaseError = error;
     result.source = 'package.json';
     try {
-      const pkg = await fetchRemoteJson('https://raw.githubusercontent.com/' + UPDATE_REPO + '/main/package.json');
+      // raw.githubusercontent 有 5 分钟 CDN 缓存，加时间戳旁路，避免回落源读到旧版本号
+      const pkg = await fetchRemoteJson('https://raw.githubusercontent.com/' + UPDATE_REPO
+        + '/main/package.json?t=' + Date.now());
       result.latest = pkg && pkg.version ? String(pkg.version) : null;
     } catch (fallbackError) {
       result.ok = false;
