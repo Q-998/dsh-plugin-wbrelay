@@ -815,7 +815,7 @@ const isAuxTask = (text) => /Generate the session title/i.test(text);
 const DIRECT_PATH = '/v2/chat/completions';
 const DIRECT_IPS = ['112.28.173.82', '112.28.174.102'];
 const DIRECT_HOST = 'copilot.tencent.com';
-const BRIDGE_VERSION = '1.0.2';
+const BRIDGE_VERSION = '1.0.3';
 
 /* ---------------- 远端版本检查（只取版本号做对比，不跳转外部页面） ---------------- */
 const UPDATE_REPO = 'Q-998/dsh-plugin-wbrelay';
@@ -1750,6 +1750,19 @@ function serveHttp() {
       child.unref();
       return sendJson(res, 200, { ok: true, note: '已弹出 UAC 确认窗口，点「是」完成 hosts 修改' });
     }
+    if (url === '/dsh-capture-token' && req.method === 'POST') {
+      // 起一个临时 CLI 实例触发一次上游请求（/v3/config），让 443 代理捕获 token。
+      // 复用编排器的 --token-only；异步拉起，不阻塞桥的请求处理。
+      const orchestrator = path.join(__dirname, 'orchestrator.cjs');
+      if (!fs.existsSync(orchestrator)) return sendJson(res, 200, { ok: false, error: '找不到 ' + orchestrator });
+      try {
+        const c = spawn(process.execPath, [orchestrator, '--token-only', '--timeout', '30000'],
+          { cwd: __dirname, detached: true, stdio: 'ignore', windowsHide: true });
+        c.on('error', (e) => log('[token] 捕获流程启动失败：' + e.message));
+        c.unref();
+        return sendJson(res, 200, { ok: true, note: '已触发 token 捕获（临时 CLI 实例，约 5-15 秒）' });
+      } catch (e) { return sendJson(res, 200, { ok: false, error: String(e.message) }); }
+    }
     if (url === '/dsh-restart' && req.method === 'POST') {
       const launcher = path.join(__dirname, 'wbrelay-window.cmd');
       if (!fs.existsSync(launcher)) return sendJson(res, 200, { ok: false, error: '找不到 wbrelay-window.cmd' });
@@ -1793,8 +1806,20 @@ function serveHttp() {
     if (url === '/v1/responses' && req.method === 'POST') { handleChat(req, res, true).catch((e) => sendJson(res, 500, { error: { message: String(e.message) } })); return; }
     sendJson(res, 404, { error: { message: '未知路径：' + url, type: 'not_found' } });
   });
-  server.on('error', (e) => log(`[http] 绑定失败：${e.message}（可能已有实例在跑）`));
-  server.listen(LISTEN_PORT, '127.0.0.1', () => log(`[http] 桥已监听 http://127.0.0.1:${LISTEN_PORT}（网关 127.0.0.1:${cred.gwPort}）`));
+  // 端口可能被刚结束的上一个实例短暂占用（重启/重拉时很常见）：重试绑定，别静默不服务。
+  const listenWithRetry = (attempt = 1) => {
+    server.listen(LISTEN_PORT, '127.0.0.1', () => log(`[http] 桥已监听 http://127.0.0.1:${LISTEN_PORT}（网关 127.0.0.1:${cred.gwPort}）`));
+    server.once('error', (e) => {
+      if (e.code === 'EADDRINUSE' && attempt <= 10) {
+        log(`[http] 端口 ${LISTEN_PORT} 暂不可用，${attempt * 500}ms 后重试（第 ${attempt} 次）`);
+        setTimeout(() => listenWithRetry(attempt + 1), attempt * 500);
+        return;
+      }
+      log(`[http] 绑定失败：${e.message}（可能已有实例在跑）`);
+      process.exit(1);
+    });
+  };
+  listenWithRetry();
   return server;
 }
 
@@ -1820,7 +1845,7 @@ function serveMcp() {
       try { msg = JSON.parse(line); } catch { continue; }
       const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\n');
       if (msg.method === 'initialize') {
-        reply({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'dsh-wb-bridge', version: '1.0.2' } });
+        reply({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'dsh-wb-bridge', version: '1.0.3' } });
       } else if (msg.method === 'tools/list') {
         reply({ tools: [] });
       } else if (msg.id !== undefined) {

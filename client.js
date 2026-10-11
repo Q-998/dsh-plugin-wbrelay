@@ -8,7 +8,7 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 	const { useState, useEffect, useRef } = react;
 	const BRIDGE = "http://127.0.0.1:8790";
 	const PLUGIN = "/dsh-plugin-wbrelay";
-	const PLUGIN_VERSION = "1.0.2";
+	const PLUGIN_VERSION = "1.0.3";
 	// 更新检查走插件接口 /update：只取远端版本号做对比，不跳转外部页面。
 	const POSITION_KEY = "dsh-plugin-wbrelay:dock-position:v1";
 	const MARGIN = 12, BUTTON_WIDTH = 176, BUTTON_HEIGHT = 44, GAP = 8;
@@ -343,7 +343,8 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 			const endpoint = kind === "login"
 				? snapshot.source === "bridge" ? BRIDGE + "/dsh-open-cli" : PLUGIN + "/open-cli"
 				: kind === "capture" ? PLUGIN + "/fix-hosts"
-					: kind === "certs" ? PLUGIN + "/certs/generate" : PLUGIN + "/start";
+					: kind === "certs" ? PLUGIN + "/certs/generate"
+						: kind === "token" ? PLUGIN + "/capture-token" : PLUGIN + "/start";
 			// 证书已有效时点按钮＝主动重签（换设备、换目录、怀疑私钥外泄）；未就绪时只补齐缺失项。
 			const options = kind === "certs"
 				? { method: "POST", headers: { "content-type": "application/json" },
@@ -351,7 +352,7 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 				: { method: "POST" };
 			try {
 				const result = await getJson(endpoint, options,
-					kind === "capture" ? 120000 : kind === "certs" ? 60000 : 4000);
+					kind === "capture" ? 120000 : kind === "certs" ? 60000 : kind === "token" ? 90000 : 4000);
 				if (result?.ok !== true) throw new Error("操作接口未确认成功");
 				if (mounted.current) {
 					setMessage({ ok: true, text: kind === "login" ? "CLI 登录窗口已唤醒"
@@ -359,7 +360,8 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 							: "捕获启用请求已提交，等待 hosts 状态更新"
 							: kind === "certs" ? result.generated === true
 								? "设备证书已" + (result.forced === true ? "重新生成" : "生成")
-								: "设备证书已是可用状态" : "启动请求已提交" });
+								: "设备证书已是可用状态"
+								: kind === "token" ? "上游 token 已捕获" : "启动请求已提交" });
 					refresh.current();
 				}
 			} catch (error) {
@@ -532,6 +534,10 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 						h(Row, { label: "剩余有效期", value: remaining == null ? "未知" : remaining <= 0 ? "已过期"
 							: remaining < 1 ? Math.ceil(remaining * 24) + " 小时" : remaining.toFixed(1) + " 天",
 							className: tk.state === "error" ? "wbr-error" : undefined }),
+						h(Button, { size: "sm", variant: "outline", className: "wbr-action",
+							disabled: !!action, onClick: () => runAction("token"),
+							icon: h(IconRefreshOutlineRegular, { size: 14 }) },
+							action === "token" ? "正在捕获" : "捕获 token"),
 						!stale && data?.capture.hosts === false && h(Tooltip, { label: "请求管理员权限启用 hosts Token 捕获", side: "top" },
 							h(Button, { size: "sm", variant: "outline", className: "wbr-action",
 								disabled: !!action, onClick: () => runAction("capture"),

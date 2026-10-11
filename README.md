@@ -100,11 +100,21 @@ CodeBuddy CLI 负责会话登录和授权。捕获代理在本机终结目标连
    ```
 
 3. **安装源**仅用于选择 npm 注册表。安装 GitHub 归档时保持默认选项，不要把 GitHub 地址填入“自定义地址”。
-4. 点击安装，完成后选择 **立即启用**。若当前 profile 不支持热重载，重启 dsh 使插件生效。
+4. 点击安装，完成后选择 **立即启用**。**首次安装必须重启 dsh**：dsh 的 HMR 只热重载 profile 配置，
+   新加入的模块根（也就是本插件）要等下一次启动才会被加载——所以重启之前 `/wbrelay` 命令和面板按钮都不会出现。
+   重启后若面板按钮仍未出现，刷新一次页面（客户端 bundle 在页面加载时装配）。
 
-dsh 插件管理器会从 GitHub 获取归档、注册 bundle，并将其加入当前 profile；无需手动编辑 profile 配置。也可以在顶部输入框
-中使用仓库地址 `https://github.com/Q-998/dsh-plugin-wbrelay`，但该写法会先执行 GitHub 连接检查；网络环境对 GitHub
-连接检查不稳定时，优先使用上面的 `.tar.gz` 归档地址。
+dsh 插件管理器会从 GitHub 获取归档、注册 bundle，并将其加入当前 profile；无需手动编辑 profile 配置。
+
+| 安装入口 | 管理器行为 | 何时用 |
+| --- | --- | --- |
+| `https://github.com/Q-998/dsh-plugin-wbrelay` | 先执行 `git ls-remote` 连接检查，失败即中止安装 | 能稳定访问 github.com 时 |
+| `https://github.com/Q-998/dsh-plugin-wbrelay/archive/refs/heads/main.tar.gz`（或 `…/archive/refs/tags/v1.0.2.tar.gz`） | 直接按 URL 拉归档，**不做连接检查** | 连接检查失败时的首选 |
+| 本地目录路径（先 `git clone`） | 直接使用本地目录，不联网 | GitHub 完全不可达或离线 |
+
+连接检查失败的日志在 `<profile>\.plugin-manager\logs\github-connection-*\git.log`，典型原因是
+`github.com:443` 不可达（`Connection was reset`、`Failed to connect … port 443`），而 `api.github.com`、
+`raw.githubusercontent.com` 仍可用——这种情况下改用归档地址或本地目录即可，不必等网络恢复。
 
 ### 使用 Git 克隆
 
@@ -234,6 +244,19 @@ openssl x509 -req -in srv.csr -CA ca.pem -CAkey ca.key -CAcreateserial `
 清理的运行数据为 `channel\mitm\captured-token.json` 与 `channel\` 下的 `runtimes.json`、`reasoning-settings.json`、`channel-run.log`；
 证书（`ca.*` / `srv.*`）默认保留，只有 `--purge` 才随源码目录一起删除。
 
+## Token 自动捕获
+
+`/wbrelay start` 与看板的「启动通道」都按 **hosts → 443 捕获代理 → CLI → 桥** 的顺序拉起服务，这个顺序是硬约束：
+
+1. hosts 必须把 `copilot.tencent.com` 指向本机，否则上游请求根本不经过代理；
+2. 443 捕获代理先就绪；
+3. 之后启动的 CLI 会在启动时请求一次 `/v3/config`，这次请求经过代理 → token 被自动捕获；
+4. 若 60622 上已有**更早启动**的 CLI 实例（例如桌面版自己拉起的），它不会重新解析上游；插件会自动起一个
+   **临时 CLI 实例**补一次上游请求，取到 token 后立刻结束它。
+
+因此正常情况下**不需要**手动打开 CLI 发消息。面板与看板上的「捕获 token」按钮是同一流程
+（等价于 `node channel\orchestrator.cjs --token-only`），只在 hosts 未启用或 443 代理不可用时会抓不到 token。
+
 ## 模型能力
 
 插件自带的 `cordis.patch.yml` 提供 `wbrelay` 模型提供方和默认模型：
@@ -285,8 +308,11 @@ minimal  low  medium  high  xhigh  max
 | 443 代理起不来 | 检查 443 占用；捕获代理与 `certgen.cjs` 都支持换端口，但 hosts 与看板需同步 |
 | hosts 未启用 | 点看板「以管理员修复（UAC 确认）」或运行 `channel\mitm\mitm-on.cmd` |
 | 桥接服务离线 | 点看板「启动通道」，检查 `8790` 监听状态 |
-| 尚未捕获授权 | 确认 CLI 已登录、443 捕获代理在线，并从看板新开的 CLI 窗口发送一条消息 |
-| 授权已过期 | 刷新 CLI 登录状态并再次发起请求 |
+| 尚未捕获授权 | 点「启动通道」或「捕获 token」：插件会自动起临时 CLI 实例补一次上游请求 |
+| 授权已过期 | 点「捕获 token」重新捕获；CLI 登录态失效时先重新 `/login` |
+| 从 GitHub 地址安装失败 | 管理器的连接检查（`git ls-remote`）失败：改用归档 URL 或本地目录路径安装 |
+| 安装后 `/wbrelay` 与面板按钮都不出现 | 首次安装必须重启 dsh（新模块根不参与热重载）；重启后仍未出现就刷新页面 |
+| `/wbrelay start` 之后仍无 token | 顺序是 hosts → 443 代理 → CLI；确认 hosts 已启用后点「捕获 token」 |
 | 推理等级缺少档位 | 刷新路由模型并确认 CLI 在线 |
 
 诊断信息以脱敏状态摘要为限。授权头、Token、证书私钥、捕获文件和包含用户内容的日志不属于诊断材料。

@@ -64,6 +64,7 @@
     <div class="row"><span class="k">状态</span><span class="v" id="tk-state">—</span></div>
     <div class="big" id="tk-days">—</div>
     <div class="note" id="tk-detail">—</div>
+    <button class="btn" type="button" onclick="postAction('/dsh-capture-token', this)">捕获 token</button>
   </div>
 
   <div class="card">
@@ -99,7 +100,7 @@
 
   <div class="card">
     <h2>版本信息</h2>
-    <div class="row"><span class="k">当前版本</span><span class="v" id="p-version">1.0.2</span></div>
+    <div class="row"><span class="k">当前版本</span><span class="v" id="p-version">1.0.3</span></div>
     <button class="btn" type="button" onclick="checkUpdate()">检查最新版本</button>
     <div class="note" id="update-note">点击后获取远端最新版本号并与本机版本对比（不跳转外部页面）。</div>
   </div>
@@ -205,7 +206,7 @@ function render(s) {
   setDot('d-plugin', pOk ? 'ok' : 'warn');
   setV('p-reg', p.registered ? '已注册 ✓' : '未注册', p.registered ? 'ok' : 'bad');
   setV('p-junc', p.junctionOk ? '正常 ✓' : '缺失', p.junctionOk ? 'ok' : 'bad');
-  $('p-version').textContent = s.ver || '1.0.2';
+  $('p-version').textContent = s.ver || '1.0.3';
 
   // 引导清单
   const g = $('guide');
