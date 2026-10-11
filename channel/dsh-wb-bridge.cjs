@@ -855,30 +855,52 @@ function fetchRemoteJson(url, timeoutMs = 8000) {
     request.on('error', (error) => reject(error));
   });
 }
-/** 优先 Release 标签，失败回落仓库 package.json；结果缓存 10 分钟。 */
+/** 归一化标签：v1.0.2 / 1.0.2 都取 1.0.2 */
+function normalizeVersion(value) {
+  const cleaned = String(value || '').trim().replace(/^v/iu, '');
+  return cleaned || null;
+}
+/** 把未知错误渲染成一行可读文本 */
+function describeError(error) {
+  return String((error && error.message) || error);
+}
+/**
+ * 按三级源依次尝试：releases/latest → tags（还没发 Release 时）→ raw package.json（兜底）。
+ * 结果缓存 10 分钟；只返回版本对比，不返回跳转动作。
+ */
 async function checkLatestVersion(force = false) {
   if (!force && updateCache && Date.now() - updateCache.checkedAt < UPDATE_TTL_MS) return updateCache;
   const result = { ok: true, current: BRIDGE_VERSION, latest: null, upToDate: null,
     url: 'https://github.com/' + UPDATE_REPO + '/releases', publishedAt: null,
     source: 'release', checkedAt: Date.now(), error: '' };
-  let releaseError = null;
+  const api = 'https://api.github.com/repos/' + UPDATE_REPO;
   try {
-    const release = await fetchRemoteJson('https://api.github.com/repos/' + UPDATE_REPO + '/releases/latest');
-    result.latest = String(release.tag_name || release.name || '').replace(/^v/iu, '') || null;
+    const release = await fetchRemoteJson(api + '/releases/latest');
+    result.latest = normalizeVersion(release.tag_name || release.name);
     if (release.html_url) result.url = String(release.html_url);
     if (release.published_at) result.publishedAt = String(release.published_at);
-  } catch (error) {
-    releaseError = error;
-    result.source = 'package.json';
+  } catch (releaseError) {
+    result.source = 'tags';
     try {
-      // raw.githubusercontent 有 5 分钟 CDN 缓存，加时间戳旁路，避免回落源读到旧版本号
-      const pkg = await fetchRemoteJson('https://raw.githubusercontent.com/' + UPDATE_REPO
-        + '/main/package.json?t=' + Date.now());
-      result.latest = pkg && pkg.version ? String(pkg.version) : null;
-    } catch (fallbackError) {
-      result.ok = false;
-      result.error = '无法获取远端版本号：' + String((releaseError && releaseError.message) || releaseError)
-        + '；备用源同样失败：' + String((fallbackError && fallbackError.message) || fallbackError);
+      const tags = await fetchRemoteJson(api + '/tags');
+      const names = Array.isArray(tags) ? tags.map((tag) => tag && tag.name).filter(Boolean) : [];
+      let best = null;
+      for (const name of names) {
+        const candidate = normalizeVersion(name);
+        if (candidate && (best === null || compareVersion(candidate, best) === 1)) best = candidate;
+      }
+      result.latest = best;
+      if (best) result.url = 'https://github.com/' + UPDATE_REPO + '/releases/tag/v' + best;
+    } catch (tagError) {
+      result.source = 'package.json';
+      try {
+        const pkg = await fetchRemoteJson('https://raw.githubusercontent.com/' + UPDATE_REPO + '/main/package.json');
+        result.latest = pkg && pkg.version ? String(pkg.version) : null;
+      } catch (rawError) {
+        result.ok = false;
+        result.error = '无法获取远端版本号：Release ' + describeError(releaseError)
+          + '；标签 ' + describeError(tagError) + '；package.json ' + describeError(rawError);
+      }
     }
   }
   if (result.latest) {
