@@ -92,27 +92,55 @@ CodeBuddy CLI 负责会话登录和授权。捕获代理在本机终结目标连
 ### 从 dsh 插件页安装
 
 1. 打开 dsh 的 **插件** 页面，选择 **添加插件**。
-2. 在安装地址中粘贴仓库地址：
+2. 在窗口顶部的 **插件包名、GitHub 仓库地址或本地目录路径** 输入框中粘贴插件归档地址：
 
    ```text
-   https://github.com/Q-998/dsh-plugin-wbrelay
+   https://github.com/Q-998/dsh-plugin-wbrelay/archive/refs/heads/main.tar.gz
    ```
 
-3. 完成安装后选择 **立即启用**。若当前 profile 不支持热重载，重启 dsh 使插件生效。
+3. **安装源**仅用于选择 npm 注册表。安装 GitHub 归档时保持默认选项，不要把 GitHub 地址填入“自定义地址”。
+4. 点击安装，完成后选择 **立即启用**。若当前 profile 不支持热重载，重启 dsh 使插件生效。
 
-dsh 插件管理器会从 GitHub 获取插件包、注册 bundle，并将其加入当前 profile；无需手动编辑 profile 配置。
+dsh 插件管理器会从 GitHub 获取归档、注册 bundle，并将其加入当前 profile；无需手动编辑 profile 配置。也可以在顶部输入框
+中使用仓库地址 `https://github.com/Q-998/dsh-plugin-wbrelay`，但该写法会先执行 GitHub 连接检查；网络环境对 GitHub
+连接检查不稳定时，优先使用上面的 `.tar.gz` 归档地址。
 
 ### 使用 Git 克隆
 
-也可以先克隆仓库，再从 dsh 插件页添加本地目录：
+> **入口区别：** dsh 的插件输入框不是命令行，不能粘贴 `git clone ...` 命令。直接安装时粘贴上面的归档 URL；
+> 使用 Git 安装时，先在 Windows CMD 中逐条执行下面的命令，最后只把本地项目目录路径粘贴回 dsh。
 
-```powershell
-git clone https://github.com/Q-998/dsh-plugin-wbrelay.git
-Set-Location dsh-plugin-wbrelay
-$PWD.Path
-```
+如果希望通过本地仓库安装，请按以下步骤操作。命令适用于 Windows **命令提示符（CMD）**，每一步单独执行。
 
-将命令输出的完整目录路径填入 **添加插件**，安装后选择 **立即启用**。
+1. 打开 CMD，切换到希望存放仓库的目录。以下示例使用当前 Windows 用户目录：
+
+   ```cmd
+   cd /d %USERPROFILE%
+   ```
+
+   `%USERPROFILE%` 会由 Windows 替换为当前用户目录；`/d` 允许同时切换盘符。
+
+2. 克隆 GitHub 仓库：
+
+   ```cmd
+   git clone https://github.com/Q-998/dsh-plugin-wbrelay.git
+   ```
+
+   Git 会在当前目录下创建 `dsh-plugin-wbrelay` 文件夹并下载项目文件。
+
+3. 进入刚下载的项目目录：
+
+   ```cmd
+   cd dsh-plugin-wbrelay
+   ```
+
+4. 显示该目录的完整路径：
+
+   ```cmd
+   cd
+   ```
+
+   复制 CMD 输出的完整路径。在 dsh **添加插件**窗口顶部的 **插件包名、GitHub 仓库地址或本地目录路径** 输入框中粘贴该路径，完成安装后选择 **立即启用**。
 
 ### 运行时证书
 
