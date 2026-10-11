@@ -8,8 +8,8 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 	const { useState, useEffect, useRef } = react;
 	const BRIDGE = "http://127.0.0.1:8790";
 	const PLUGIN = "/dsh-plugin-wbrelay";
-	const PLUGIN_VERSION = "1.0.1";
-	const UPDATE_URL = "https://github.com/Q-998/dsh-plugin-wbrelay/releases/latest";
+	const PLUGIN_VERSION = "1.0.2";
+	// 更新检查走插件接口 /update：只取远端版本号做对比，不跳转外部页面。
 	const POSITION_KEY = "dsh-plugin-wbrelay:dock-position:v1";
 	const MARGIN = 12, BUTTON_WIDTH = 176, BUTTON_HEIGHT = 44, GAP = 8;
 	const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
@@ -80,6 +80,15 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 		return { state: "done", label: "有效" };
 	}
 
+	// 证书状态：present=本机是否已有证书；ok=能否直接用于捕获（不过期、主机名覆盖、公私钥配对）
+	function certState(certs) {
+		if (!certs || certs.present == null) return { state: "idle", label: "未确认" };
+		if (certs.ok !== true) return { state: "error", label: certs.present ? "需要重签" : "未生成" };
+		const days = certs.srvDaysLeft;
+		if (days != null && days <= 30) return { state: "warning", label: "即将过期" };
+		return { state: "done", label: "有效" };
+	}
+
 	// 两个原有状态接口的字段不同，只在前端归一化，不改变路由或桥接协议。
 	function normalizeStatus(raw, source) {
 		if (!raw || typeof raw !== "object" || !raw.cli || !raw.bridge || !raw.token) {
@@ -98,6 +107,12 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 				gatewayAuth: bool(c.authOk), port: 60622 },
 			token: { present: bool(t.present), capturedAt: t.capturedAt, iat: number(t.iat),
 				exp: number(t.exp), daysLeft: number(t.daysLeft) },
+			certs: { present: bool(raw.certs?.present), ok: bool(raw.certs?.ok),
+				sans: Array.isArray(raw.certs?.sans) ? raw.certs.sans : [],
+				srvNotAfter: raw.certs?.srvNotAfter || null, caNotAfter: raw.certs?.caNotAfter || null,
+				srvDaysLeft: number(raw.certs?.srvDaysLeft), caDaysLeft: number(raw.certs?.caDaysLeft),
+				fingerprint: text(raw.certs?.fingerprint, ""),
+				issues: Array.isArray(raw.certs?.issues) ? raw.certs.issues : [] },
 			capture: { up: bool(raw.mitm443?.up), hosts: bool(raw.hosts?.entry) },
 		};
 	}
@@ -172,6 +187,7 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 		const [models, setModels] = useState({ items: [], at: null, error: "", loading: false, nativeState: "unknown" });
 		const [action, setAction] = useState("");
 		const [message, setMessage] = useState(null);
+		const [update, setUpdate] = useState({ latest: "", upToDate: null, at: null, error: "" });
 		const root = useRef(null), trigger = useRef(null), panel = useRef(null);
 		const mounted = useRef(false), requests = useRef(new Set()), drag = useRef(null);
 		const suppressClick = useRef(false), modelFlight = useRef(null), modelCacheAt = useRef(0);
@@ -181,6 +197,7 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 		const data = snapshot.data;
 		const stale = !!snapshot.error;
 		const tk = data ? tokenState(data.token) : { state: "idle", label: "待检测" };
+		const cstate = data ? certState(data.certs) : { state: "idle", label: "待检测" };
 		const bridgeState = stale ? "idle" : tone(data?.bridge.up);
 		const cliState = stale ? "idle" : tone(data?.cli.up);
 
@@ -325,14 +342,24 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 			// POST 不自动重试，避免一次点击唤醒多个 CLI 窗口。
 			const endpoint = kind === "login"
 				? snapshot.source === "bridge" ? BRIDGE + "/dsh-open-cli" : PLUGIN + "/open-cli"
-				: kind === "capture" ? PLUGIN + "/fix-hosts" : PLUGIN + "/start";
+				: kind === "capture" ? PLUGIN + "/fix-hosts"
+					: kind === "certs" ? PLUGIN + "/certs/generate" : PLUGIN + "/start";
+			// 证书已有效时点按钮＝主动重签（换设备、换目录、怀疑私钥外泄）；未就绪时只补齐缺失项。
+			const options = kind === "certs"
+				? { method: "POST", headers: { "content-type": "application/json" },
+					body: JSON.stringify({ force: snapshot.data?.certs?.ok === true }) }
+				: { method: "POST" };
 			try {
-				const result = await getJson(endpoint, { method: "POST" }, kind === "capture" ? 120000 : 4000);
+				const result = await getJson(endpoint, options,
+					kind === "capture" ? 120000 : kind === "certs" ? 60000 : 4000);
 				if (result?.ok !== true) throw new Error("操作接口未确认成功");
 				if (mounted.current) {
 					setMessage({ ok: true, text: kind === "login" ? "CLI 登录窗口已唤醒"
 						: kind === "capture" ? result.enabled === true ? "hosts 捕获已启用"
-							: "捕获启用请求已提交，等待 hosts 状态更新" : "启动请求已提交" });
+							: "捕获启用请求已提交，等待 hosts 状态更新"
+							: kind === "certs" ? result.generated === true
+								? "设备证书已" + (result.forced === true ? "重新生成" : "生成")
+								: "设备证书已是可用状态" : "启动请求已提交" });
 					refresh.current();
 				}
 			} catch (error) {
@@ -384,9 +411,30 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 				return !previous;
 			});
 		}
-		function getUpdate() {
-			window.open(UPDATE_URL, "_blank", "noopener,noreferrer");
-			setMessage({ ok: true, text: "已打开 GitHub 最新版本页面" });
+		async function getUpdate() {
+			// 只取远端版本号做对比，不跳转外部页面
+			if (actionLock.current) return;
+			actionLock.current = true;
+			setAction("update");
+			setMessage(null);
+			try {
+				const result = await getJson(PLUGIN + "/update", {}, 10000);
+				if (!mounted.current) return;
+				const latest = text(result.latest, ""), current = text(result.current, PLUGIN_VERSION);
+				setUpdate({ latest, upToDate: bool(result.upToDate), at: Date.now(), error: "" });
+				setMessage({ ok: true, text: latest
+					? result.upToDate === true ? "已是最新版本 " + current
+						: "发现新版本 " + latest + "（本地 " + current + "）"
+					: "远端未返回版本号（来源：" + text(result.source) + "）" });
+			} catch (error) {
+				if (mounted.current) {
+					setUpdate({ latest: "", upToDate: null, at: Date.now(), error: text(error.message, "检查失败") });
+					setMessage({ ok: false, text: "检查版本失败：" + text(error.message, "网络不可用") });
+				}
+			} finally {
+				actionLock.current = false;
+				if (mounted.current) setAction("");
+			}
 		}
 		function moveByKey(event) {
 			if (!event.altKey || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -454,6 +502,25 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 							disabled: !!action, onClick: () => runAction("login"),
 							icon: h(IconCodeOutlineRegular, { size: 14 }) },
 							action === "login" ? "正在唤醒" : "CLI 登录")),
+					h(Section, { title: "捕获证书", icon: IconLinkOutlineRegular,
+						state: stale ? "idle" : cstate.state, label: stale ? "未确认" : cstate.label },
+						data?.certs.present === false && h("div", { className: "wbr-muted wbr-warning" },
+							"本机还没有捕获证书：启动通道或点下方按钮会自动生成，不需要手工 openssl"),
+						h(Row, { label: "签发主机", value: data?.certs.sans.length ? data.certs.sans.join(", ") : null }),
+						h(Row, { label: "证书到期", value: time(data?.certs.srvNotAfter) }),
+						h(Row, { label: "剩余有效期", value: data?.certs.srvDaysLeft == null ? "未知"
+							: data.certs.srvDaysLeft <= 0 ? "已过期" : data.certs.srvDaysLeft + " 天",
+							className: cstate.state === "error" ? "wbr-error" : undefined }),
+						h(Row, { label: "CA 剩余", value: data?.certs.caDaysLeft == null ? "未知" : data.certs.caDaysLeft + " 天" }),
+						h(Row, { label: "指纹", value: data?.certs.fingerprint ? data.certs.fingerprint.slice(0, 23) + "…" : null }),
+						!stale && data?.certs.issues.length > 0 && h("div", { className: "wbr-muted wbr-warning", role: "status" },
+							data.certs.issues.join("；")),
+						h(Tooltip, { label: "证书只在本机有效；换设备、换目录或怀疑私钥外泄时重新生成",
+							side: "top" },
+							h(Button, { size: "sm", variant: "outline", className: "wbr-action",
+								disabled: !!action, onClick: () => runAction("certs"),
+								icon: h(IconRefreshOutlineRegular, { size: 14 }) },
+								action === "certs" ? "正在处理" : data?.certs.ok === true ? "重新生成证书" : "生成证书"))),
 					h(Section, { title: "Token 时间戳", icon: IconClockOutlineRegular,
 						state: stale ? "idle" : tk.state, label: stale ? "未确认" : tk.label },
 						data?.token.present === false && h("div", { className: "wbr-muted wbr-warning" },
@@ -509,10 +576,15 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 							action === "start" ? "正在提交" : "启动通道"))),
 					h(Section, { title: "版本信息", icon: IconGaugeOutlineRegular, state: "idle", label: "" },
 						h(Row, { label: "插件版本", value: data?.version || PLUGIN_VERSION }),
+						h(Row, { label: "最新版本", value: update.error ? "检查失败"
+							: update.latest ? update.latest + (update.upToDate === true ? "（已是最新）"
+								: update.upToDate === false ? "（可更新）" : "")
+								: update.at ? "未获取到版本号" : "未检查" }),
 						h(Row, { label: "更新通道", value: "GitHub Releases" }),
 						h(Button, { size: "sm", variant: "outline", className: "wbr-action",
-							onClick: getUpdate, icon: h(IconRefreshOutlineRegular, { size: 14 }) },
-							"一键获取更新")),
+							disabled: action === "update", onClick: getUpdate,
+							icon: h(IconRefreshOutlineRegular, { size: 14 }) },
+							action === "update" ? "检查中" : "检查最新版本")),
 				h("div", { className: "wbr-footer" },
 					h("span", null, polling ? "正在更新" : snapshot.at ? "更新 " + time(snapshot.at) : "等待状态"),
 					h("span", null, snapshot.source === "plugin" ? "插件状态" : snapshot.source === "bridge" ? "桥状态" : "未连接"))));

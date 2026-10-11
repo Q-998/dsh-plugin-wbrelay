@@ -59,6 +59,29 @@ let cred = {
 // 那种服务只需 x-codebuddy-request 头、不需要 Bearer。
 const LOCKED = ARGS.includes('--gw-port');
 
+/* ---------------- 设备证书 ----------------
+ * 捕获证书是设备专用材料（.gitignore 排除），克隆插件时并不存在。
+ * 这里按需自检 + 生成，保证新用户不需要手工 openssl 就能跑通捕获链路。 */
+const MITM_DIR = path.join(__dirname, 'mitm');
+function ensureCerts(options = {}) {
+  try {
+    const { ensureDeviceCerts } = require(path.join(MITM_DIR, 'certgen.cjs'));
+    return ensureDeviceCerts(MITM_DIR, options);
+  } catch (error) {
+    return { ok: false, generated: false, issues: [], status: null,
+      error: '证书模块不可用：' + String((error && error.message) || error) };
+  }
+}
+function certsStatus() {
+  try {
+    const { inspectDeviceCerts } = require(path.join(MITM_DIR, 'certgen.cjs'));
+    return inspectDeviceCerts(MITM_DIR);
+  } catch (error) {
+    return { present: false, ok: false, sans: [], caPath: path.join(MITM_DIR, 'ca.pem'),
+      srvPath: path.join(MITM_DIR, 'srv.pem'), issues: ['证书模块不可用：' + String((error && error.message) || error)] };
+  }
+}
+
 // 引擎：acp = 走 ACP 通道（真流式：逐字增量 + 工具事件 + 多轮会话保持）；runs = 旧的一次性网关路径。
 const ENGINE = argOf('--engine', 'acp');
 
@@ -792,7 +815,77 @@ const isAuxTask = (text) => /Generate the session title/i.test(text);
 const DIRECT_PATH = '/v2/chat/completions';
 const DIRECT_IPS = ['112.28.173.82', '112.28.174.102'];
 const DIRECT_HOST = 'copilot.tencent.com';
-const BRIDGE_VERSION = '1.0.1';
+const BRIDGE_VERSION = '1.0.2';
+
+/* ---------------- 远端版本检查（只取版本号做对比，不跳转外部页面） ---------------- */
+const UPDATE_REPO = 'Q-998/dsh-plugin-wbrelay';
+const UPDATE_TTL_MS = 10 * 60 * 1000;
+let updateCache = null;
+
+function parseVersion(value) {
+  const m = /v?(\d+)\.(\d+)\.(\d+)/u.exec(String(value || ''));
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+function compareVersion(left, right) {
+  const a = parseVersion(left), b = parseVersion(right);
+  if (!a || !b) return null;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1;
+  return 0;
+}
+// 一次性 GET：用 node:https + agent:false，不留 keep-alive 句柄（fetch 的全局调度器会留句柄）
+function fetchRemoteJson(url, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, {
+      agent: false, timeout: timeoutMs,
+      headers: { accept: 'application/json', 'user-agent': 'dsh-wb-bridge/' + BRIDGE_VERSION },
+    }, (response) => {
+      const status = response.statusCode || 0;
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 512 * 1024) request.destroy(new Error('响应内容过大'));
+      });
+      response.on('end', () => {
+        if (status < 200 || status >= 300) { reject(new Error('HTTP ' + status)); return; }
+        try { resolve(JSON.parse(body)); } catch { reject(new Error('返回内容不是 JSON')); }
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error('请求超时')));
+    request.on('error', (error) => reject(error));
+  });
+}
+/** 优先 Release 标签，失败回落仓库 package.json；结果缓存 10 分钟。 */
+async function checkLatestVersion(force = false) {
+  if (!force && updateCache && Date.now() - updateCache.checkedAt < UPDATE_TTL_MS) return updateCache;
+  const result = { ok: true, current: BRIDGE_VERSION, latest: null, upToDate: null,
+    url: 'https://github.com/' + UPDATE_REPO + '/releases', publishedAt: null,
+    source: 'release', checkedAt: Date.now(), error: '' };
+  let releaseError = null;
+  try {
+    const release = await fetchRemoteJson('https://api.github.com/repos/' + UPDATE_REPO + '/releases/latest');
+    result.latest = String(release.tag_name || release.name || '').replace(/^v/iu, '') || null;
+    if (release.html_url) result.url = String(release.html_url);
+    if (release.published_at) result.publishedAt = String(release.published_at);
+  } catch (error) {
+    releaseError = error;
+    result.source = 'package.json';
+    try {
+      const pkg = await fetchRemoteJson('https://raw.githubusercontent.com/' + UPDATE_REPO + '/main/package.json');
+      result.latest = pkg && pkg.version ? String(pkg.version) : null;
+    } catch (fallbackError) {
+      result.ok = false;
+      result.error = '无法获取远端版本号：' + String((releaseError && releaseError.message) || releaseError)
+        + '；备用源同样失败：' + String((fallbackError && fallbackError.message) || fallbackError);
+    }
+  }
+  if (result.latest) {
+    const cmp = compareVersion(result.latest, BRIDGE_VERSION);
+    result.upToDate = cmp === null ? null : cmp <= 0;
+  }
+  updateCache = result;
+  return result;
+}
 const SYSTEM_INSTRUCTION_MODELS = new Set([REASONING_MODEL, 'glm-5.3-flash']);
 let directIpIdx = 0;
 
@@ -951,7 +1044,8 @@ function killPortListeners(port) {
   try {
     const out = execSync(`netstat -ano | findstr ":${port} " | findstr "LISTENING"`, { stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 }).toString();
     const pids = [...new Set(out.split('\n').map((l) => l.trim().split(/\s+/).pop()).filter((p) => /^\d+$/.test(p)))];
-    for (const pid of pids) { try { execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore', timeout: 5000 }); } catch { /* ignore */ } }
+    // /T：连子进程一起结束（CLI 由 cmd.exe 包装拉起，只杀包装进程会留下孤儿 node）
+    for (const pid of pids) { try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore', timeout: 5000 }); } catch { /* ignore */ } }
     return pids.length;
   } catch { return 0; } // 无监听者
 }
@@ -994,6 +1088,7 @@ async function buildStatus(probe) {
     },
     mitm443: { up: cli443 },
     hosts: { entry: hostsHasEntry(), domain: DIRECT_HOST },
+    certs: certsStatus(),
     upstream: upstreamProbeCache,
     plugin: pluginStatus(),
     models: pluginModels(),
@@ -1611,8 +1706,12 @@ function serveHttp() {
     }
     if (url === '/dsh-open-cli' && req.method === 'POST') {
       if (!codebuddyInstalled()) return sendJson(res, 200, { ok: false, error: '请先完成上一步：安装 CodeBuddy CLI' });
-      const ca = path.join(__dirname, 'mitm', 'ca.pem');
-      if (!fs.existsSync(ca)) return sendJson(res, 200, { ok: false, error: '找不到 Token 捕获证书：' + ca });
+      const certs = ensureCerts();
+      if (!certs.ok || !certs.status) {
+        return sendJson(res, 200, { ok: false,
+          error: '捕获证书未就绪：' + (certs.error || certs.issues.join('；')) });
+      }
+      const ca = certs.status.caPath;
       const env = { ...process.env, NODE_EXTRA_CA_CERTS: ca, NO_PROXY: '127.0.0.1,localhost' };
       for (const key of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']) delete env[key];
       delete env.NODE_TLS_REJECT_UNAUTHORIZED;
@@ -1635,10 +1734,10 @@ function serveHttp() {
         const rt = JSON.parse(fs.readFileSync(path.join(__dirname, 'runtimes.json'), 'utf8'));
         for (const k of ['bridge', 'capture', 'serve']) {
           const pid = rt.pids && rt.pids[k];
-          if (pid) { try { execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore', timeout: 4000 }); } catch { /* ignore */ } }
+          if (pid) { try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore', timeout: 5000 }); } catch { /* ignore */ } }
         }
       } catch { /* 无 runtimes.json：兼容旧实例，靠窗口标题兜底 */ }
-      try { execSync('taskkill /FI "WINDOWTITLE eq codebuddy-code serve*" /F', { stdio: 'ignore', timeout: 4000 }); } catch { /* ignore */ }
+      try { execSync('taskkill /FI "WINDOWTITLE eq codebuddy-code serve*" /T /F', { stdio: 'ignore', timeout: 5000 }); } catch { /* ignore */ }
       // 2) 隐藏拉起新编排器（启动器自带 2 秒缓冲），3) 本桥退出释放 8790
       try {
         const c = spawn('cmd.exe', ['/c', launcher], { cwd: __dirname, detached: true, stdio: 'ignore', windowsHide: true });
@@ -1650,6 +1749,12 @@ function serveHttp() {
     if (url === '/api/status') {
       const probe = req.url.includes('probe=1');
       buildStatus(probe).then((s) => sendJson(res, 200, s)).catch((e) => sendJson(res, 500, { error: { message: String(e.message) } }));
+      return;
+    }
+    if (url === '/api/update') {
+      checkLatestVersion(req.url.includes('force=1'))
+        .then((r) => sendJson(res, r.ok ? 200 : 502, r))
+        .catch((e) => sendJson(res, 502, { ok: false, error: String(e.message) }));
       return;
     }
     if (url === '/v1/models') {
@@ -1691,7 +1796,7 @@ function serveMcp() {
       try { msg = JSON.parse(line); } catch { continue; }
       const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\n');
       if (msg.method === 'initialize') {
-        reply({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'dsh-wb-bridge', version: '1.0.1' } });
+        reply({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'dsh-wb-bridge', version: '1.0.2' } });
       } else if (msg.method === 'tools/list') {
         reply({ tools: [] });
       } else if (msg.id !== undefined) {

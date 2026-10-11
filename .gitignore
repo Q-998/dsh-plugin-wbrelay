@@ -7,7 +7,7 @@ channel/reasoning-settings.json
 channel/reasoning-settings.json.tmp
 
 # ============ 设备专用 TLS 证书与私钥，严禁提交 ============
-# 每台设备必须本地重新生成，详见 README「生成设备证书」。
+# 由插件在部署设备本地生成（cmd: channel\mitm\gen-certs.cmd），说明见 channel/mitm/CERT.md
 channel/mitm/ca.key
 channel/mitm/ca.pem
 channel/mitm/srv.key

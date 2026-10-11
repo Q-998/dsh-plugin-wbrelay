@@ -18,7 +18,28 @@ function log(s) {
 // 清代理环境变量（GUI 应用注入的 HTTP_PROXY 会弄崩 CLI axios）
 for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']) delete process.env[k];
 process.env.NO_PROXY = '127.0.0.1,localhost';
-process.env.NODE_EXTRA_CA_CERTS = path.join(DIR, 'mitm', 'ca.pem');
+
+// 设备证书：不进 Git 的本机材料。这里自愈式确保存在且有效（缺失/过期/不覆盖主机名都会重签），
+// 新用户克隆插件后无需手工 openssl；CLI 只有在 ca.pem 存在时才注入 NODE_EXTRA_CA_CERTS。
+const MITM_DIR = path.join(DIR, 'mitm');
+const CA_FILE = path.join(MITM_DIR, 'ca.pem');
+try {
+  const { ensureDeviceCerts } = require(path.join(MITM_DIR, 'certgen.cjs'));
+  const ensured = ensureDeviceCerts(MITM_DIR);
+  if (ensured.ok) {
+    const c = ensured.status;
+    log('   设备证书 ' + (ensured.generated ? '已生成' : '有效') + '：到期 ' + c.srvNotAfter
+      + '（剩余 ' + c.srvDaysLeft + ' 天），主机名 ' + c.sans.join(','));
+    process.env.NODE_EXTRA_CA_CERTS = CA_FILE;
+  } else {
+    log('   [WARN] 设备证书未就绪：' + (ensured.error || ensured.issues.join('；')));
+    log('   [WARN] 手工生成：node "' + path.join(MITM_DIR, 'certgen.cjs') + '" --force');
+  }
+} catch (e) {
+  log('   [WARN] 证书生成器不可用：' + e.message);
+}
+if (!process.env.NODE_EXTRA_CA_CERTS && fs.existsSync(CA_FILE)) process.env.NODE_EXTRA_CA_CERTS = CA_FILE;
+if (process.env.NODE_EXTRA_CA_CERTS) log('   NODE_EXTRA_CA_CERTS = ' + process.env.NODE_EXTRA_CA_CERTS);
 
 function probe(port, ms = 1500) {
   return new Promise((resolve) => {
@@ -50,6 +71,7 @@ function killOldWatchdog() {
 }
 function spawnDetached(cmd, args, key, opts = {}) {
   const c = spawn(cmd, args, { cwd: DIR, detached: true, stdio: 'ignore', windowsHide: opts.windowsHide !== false });
+  c.on('error', (e) => log('   [WARN] 启动失败 ' + cmd + '：' + e.message));
   c.unref();
   if (key) { PIDS[key] = c.pid; savePids(); }
   return c;
@@ -81,6 +103,7 @@ async function ensureBridge() {
   if (fails.bridge >= 3) return false;
   log('   桥未运行 → 隐藏拉起 (direct 引擎)');
   const b = spawn(process.execPath, [path.join(DIR, 'dsh-wb-bridge.cjs'), '--gw-port', '60622', '--port', '8790', '--engine', 'direct'], { cwd: DIR, detached: true, stdio: 'ignore', windowsHide: true });
+  b.on('error', (e) => log('   [WARN] 桥启动失败：' + e.message));
   b.unref();
   PIDS.bridge = b.pid; savePids();
   for (let i = 0; i < 10; i++) { await sleep(1000); if (await probe(8790)) { fails.bridge = 0; return true; } }
@@ -120,6 +143,7 @@ if (DAEMON) {
     } else {
       log('   starting bridge (hidden, detached)...');
       const b = spawn(process.execPath, [path.join(DIR, 'dsh-wb-bridge.cjs'), '--gw-port', '60622', '--port', '8790', '--engine', 'direct'], { cwd: DIR, detached: true, stdio: 'ignore', windowsHide: true });
+      b.on('error', (e) => log('   [WARN] 桥启动失败：' + e.message));
       b.unref();
       PIDS.bridge = b.pid; savePids();
       for (let i = 0; i < 10; i++) { await sleep(1000); if (await probe(8790)) break; }
