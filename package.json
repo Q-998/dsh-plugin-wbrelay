@@ -1,0 +1,54 @@
+{
+  "name": "dsh-plugin-wbrelay",
+  "version": "1.0.0",
+  "description": "wbrelay provider for dsh: GLM via local direct bridge (127.0.0.1:8790). Ships its own cordis patch so dsh profile config stays clean and survives dsh updates.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "channel"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-plugins",
+    "wbrelay",
+    "glm",
+    "llm-provider"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    },
+    "install": {
+      "preferred": "link",
+      "note": "install as link: dependency to this folder in ~/.dsh/profiles/desktop/package.json; edit source + restart dsh to update. To publish later, add tarball/git URLs here."
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

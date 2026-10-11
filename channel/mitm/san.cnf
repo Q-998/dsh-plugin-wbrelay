@@ -1,0 +1,2 @@
+subjectAltName=DNS:copilot.tencent.com,DNS:tencent.sso.codebuddy.cn,DNS:codebuddy.cn
+extendedKeyUsage=serverAuth

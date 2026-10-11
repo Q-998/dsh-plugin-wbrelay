@@ -1,0 +1,86 @@
+# dsh-plugin-wbrelay bundle patch
+#
+# 注意：cordis 对同一插件 id 的 config 是"后到者整体替换"，所以 llm-pi-ai 的
+# providers 必须留在用户 patch（与 deep/sober 同处），本插件只提供：
+#   1) agent-default-model（默认 provider=wbrelay / glm-5.3-flash）
+#   2) bundle 挂载 + 客户端按钮/路由（client.js）
+# wbrelay 提供方本体请看用户 cordis.patch.yml 的 llm-pi-ai.providers.wbrelay。
+
+- insert:
+    - id: dsh-plugin-wbrelay
+      name: dsh-plugin-wbrelay
+
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: wbrelay
+    model: glm-5.3-flash
+
+# ⚠️ 合并语义：cordis 对同一插件 id 的 config 是"后到者整体替换"。
+# - 全新用户（自己的 patch 里没有 llm-pi-ai 条目）：下面这条生效，开箱即用；
+# - 已有自定义 providers 的用户：他们 patch 里的 llm-pi-ai 会整体覆盖本条，
+#   需把 wbrelay 块手动并进他们自己的 llm-pi-ai.providers（README 有说明）。
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      wbrelay:
+        displayName: wbrelay 直连
+        apiKeyEnv: WB_RELAY_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8790/v1
+        headers:
+          x-wb-session: dsh
+        defaultContextWindow: 256000
+        defaultMaxTokens: 32768
+        timeoutMs: 1800000
+        streamIdleTimeoutMs: 600000
+        models:
+          - id: glm-5.3-flash
+            name: "GLM-5.3-Flash"
+            contextWindow: 1000000
+            compat:
+              supportsDeveloperRole: false
+              maxTokensField: max_tokens
+          - id: glm-5.3
+            name: "GLM-5.3"
+            contextWindow: 1000000
+          - id: glm-5.2
+            name: "GLM-5.2"
+            contextWindow: 1000000
+          - id: glm-5.1
+            name: "GLM-5.1"
+            contextWindow: 200000
+          - id: glm-4.6
+            name: "GLM-4.6"
+            contextWindow: 168000
+          - id: deepseek-v4.1-flash
+            name: "Deepseek-V4.1-Flash"
+            contextWindow: 1000000
+            reasoningEfforts:
+              high: high
+            compat:
+              supportsDeveloperRole: false
+              maxTokensField: max_tokens
+          - id: deepseek-v4-flash
+            name: "Deepseek-V4-Flash"
+            contextWindow: 1000000
+          - id: deepseek-v4-pro
+            name: "Deepseek-V4-Pro"
+            contextWindow: 1000000
+          - id: kimi-k2.7
+            name: "Kimi-K2.7-Code"
+            contextWindow: 256000
+          - id: kimi-k3-1
+            name: "Kimi-K3"
+            contextWindow: 1000000
+          - id: minimax-m3
+            name: "MiniMax-M3"
+            contextWindow: 512000
+          - id: hy4-preview-f
+            name: "Hy4 preview (f)"
+            contextWindow: 960000
+          - id: auto
+            name: "Auto"
+            contextWindow: 256000
+

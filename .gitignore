@@ -1,0 +1,19 @@
+# ============ 运行时产物（含登录 token / 日志），严禁提交 ============
+channel/mitm/captured-token.json
+channel/channel-run.log
+*.log
+channel/runtimes.json
+channel/reasoning-settings.json
+channel/reasoning-settings.json.tmp
+
+# ============ 设备专用 TLS 证书与私钥，严禁提交 ============
+# 每台设备必须本地重新生成，详见 README「生成设备证书」。
+channel/mitm/ca.key
+channel/mitm/ca.pem
+channel/mitm/srv.key
+channel/mitm/srv.pem
+
+# ============ 打包与分发产物 ============
+release/
+*.tar.gz
+*.tgz
