@@ -99,9 +99,9 @@
 
   <div class="card">
     <h2>版本信息</h2>
-    <div class="row"><span class="k">当前版本</span><span class="v" id="p-version">1.0.0</span></div>
+    <div class="row"><span class="k">当前版本</span><span class="v" id="p-version">1.0.1</span></div>
     <button class="btn" type="button" onclick="getUpdate()">一键获取更新</button>
-    <div class="note" id="update-note">更新地址待配置，GitHub 发布后启用。</div>
+    <div class="note" id="update-note">打开 GitHub 最新版本页面。</div>
   </div>
 
   <div class="card">
@@ -205,7 +205,7 @@ function render(s) {
   setDot('d-plugin', pOk ? 'ok' : 'warn');
   setV('p-reg', p.registered ? '已注册 ✓' : '未注册', p.registered ? 'ok' : 'bad');
   setV('p-junc', p.junctionOk ? '正常 ✓' : '缺失', p.junctionOk ? 'ok' : 'bad');
-  $('p-version').textContent = s.ver || '1.0.0';
+  $('p-version').textContent = s.ver || '1.0.1';
 
   // 引导清单
   const g = $('guide');
@@ -241,7 +241,8 @@ function render(s) {
 }
 
 function getUpdate() {
-  $('update-note').textContent = '更新地址待配置，GitHub 发布后启用。';
+  window.open('https://github.com/Q-998/dsh-plugin-wbrelay/releases/latest', '_blank', 'noopener,noreferrer');
+  $('update-note').textContent = '已打开 GitHub 最新版本页面。';
 }
 
 async function postAction(p, btn) {

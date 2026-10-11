@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-wbrelay",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "wbrelay provider for dsh: GLM via local direct bridge (127.0.0.1:8790). Ships its own cordis patch so dsh profile config stays clean and survives dsh updates.",
   "type": "module",
   "main": "lib/index.js",

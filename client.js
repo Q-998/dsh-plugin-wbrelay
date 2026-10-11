@@ -8,9 +8,8 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 	const { useState, useEffect, useRef } = react;
 	const BRIDGE = "http://127.0.0.1:8790";
 	const PLUGIN = "/dsh-plugin-wbrelay";
-	const PLUGIN_VERSION = "1.0.0";
-	// GitHub 仓库发布后只需填写此地址；空值时按钮保留为占位，不发起网络请求。
-	const UPDATE_URL = "";
+	const PLUGIN_VERSION = "1.0.1";
+	const UPDATE_URL = "https://github.com/Q-998/dsh-plugin-wbrelay/releases/latest";
 	const POSITION_KEY = "dsh-plugin-wbrelay:dock-position:v1";
 	const MARGIN = 12, BUTTON_WIDTH = 176, BUTTON_HEIGHT = 44, GAP = 8;
 	const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
@@ -386,11 +385,8 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 			});
 		}
 		function getUpdate() {
-			if (UPDATE_URL) {
-				window.open(UPDATE_URL, "_blank", "noopener,noreferrer");
-				return;
-			}
-			setMessage({ ok: true, text: "更新地址待配置，GitHub 发布后即可启用" });
+			window.open(UPDATE_URL, "_blank", "noopener,noreferrer");
+			setMessage({ ok: true, text: "已打开 GitHub 最新版本页面" });
 		}
 		function moveByKey(event) {
 			if (!event.altKey || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -513,7 +509,7 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-wbrelay", factory: (require) => {
 							action === "start" ? "正在提交" : "启动通道"))),
 					h(Section, { title: "版本信息", icon: IconGaugeOutlineRegular, state: "idle", label: "" },
 						h(Row, { label: "插件版本", value: data?.version || PLUGIN_VERSION }),
-						h(Row, { label: "更新通道", value: UPDATE_URL ? "GitHub" : "待配置" }),
+						h(Row, { label: "更新通道", value: "GitHub Releases" }),
 						h(Button, { size: "sm", variant: "outline", className: "wbr-action",
 							onClick: getUpdate, icon: h(IconRefreshOutlineRegular, { size: 14 }) },
 							"一键获取更新")),

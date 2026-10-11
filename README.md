@@ -4,7 +4,6 @@
 
 **面向 dsh 的 CodeBuddy CLI 模型桥接插件**
 
-![Version](https://img.shields.io/badge/version-1.0.0-0f766e?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square)
 ![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-64748b?style=flat-square)
@@ -26,7 +25,6 @@
 - 本地桥接服务及服务编排器
 - CLI 登录、授权捕获和状态查询接口
 - 上游模型清单与原生推理等级同步
-- 版本信息和更新入口
 
 本项目是独立的第三方插件，不代表 dsh、CodeBuddy 或其关联服务的官方立场。
 
@@ -77,7 +75,6 @@ CodeBuddy CLI 负责会话登录和授权。捕获代理在本机终结目标连
 | 路由模型 | 拉取上游模型清单，显示每个模型的推理能力 |
 | 原生推理等级 | 将已确认的模型能力同步到 dsh 原生推理等级菜单 |
 | 运行监控 | 展示桥接端口、引擎、运行时长、请求统计和最近错误 |
-| 版本入口 | 显示插件版本，并预留一键获取更新入口 |
 
 ## 环境要求
 
@@ -95,11 +92,9 @@ CodeBuddy CLI 负责会话登录和授权。捕获代理在本机终结目标连
 ### 克隆仓库
 
 ```powershell
-git clone https://github.com/<owner>/<repository>.git
-Set-Location <repository>
+git clone https://github.com/Q-998/dsh-plugin-wbrelay.git
+Set-Location dsh-plugin-wbrelay
 ```
-
-`<owner>/<repository>` 替换为实际 GitHub 仓库标识。
 
 ### 注册插件
 
@@ -193,10 +188,6 @@ minimal  low  medium  high  xhigh  max
 | `POST` | `/dsh-plugin-wbrelay/fix-hosts` | 通过管理员授权启用 hosts 捕获 |
 | `POST` | `/dsh-plugin-wbrelay/open-cli` | 打开 CodeBuddy CLI 登录窗口 |
 | `GET` | `/dsh-plugin-wbrelay/dashboard` | 打开独立诊断页面 |
-
-## 版本信息与更新入口
-
-当前版本为 `1.0.0`。看板和诊断页面包含版本信息区域与一键获取更新入口。公开发布地址写入前，更新入口保持占位状态，不发起外部请求。
 
 ## 项目结构
 

@@ -792,7 +792,7 @@ const isAuxTask = (text) => /Generate the session title/i.test(text);
 const DIRECT_PATH = '/v2/chat/completions';
 const DIRECT_IPS = ['112.28.173.82', '112.28.174.102'];
 const DIRECT_HOST = 'copilot.tencent.com';
-const BRIDGE_VERSION = '1.0.0';
+const BRIDGE_VERSION = '1.0.1';
 const SYSTEM_INSTRUCTION_MODELS = new Set([REASONING_MODEL, 'glm-5.3-flash']);
 let directIpIdx = 0;
 
@@ -1691,7 +1691,7 @@ function serveMcp() {
       try { msg = JSON.parse(line); } catch { continue; }
       const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\n');
       if (msg.method === 'initialize') {
-        reply({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'dsh-wb-bridge', version: '1.0.0' } });
+        reply({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'dsh-wb-bridge', version: '1.0.1' } });
       } else if (msg.method === 'tools/list') {
         reply({ tools: [] });
       } else if (msg.id !== undefined) {
