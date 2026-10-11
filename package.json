@@ -4,6 +4,10 @@
   "description": "wbrelay provider for dsh: GLM via local direct bridge (127.0.0.1:8790). Ships its own cordis patch so dsh profile config stays clean and survives dsh updates.",
   "type": "module",
   "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Q-998/dsh-plugin-wbrelay.git"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./client.js",
@@ -41,8 +45,10 @@
       ]
     },
     "install": {
-      "preferred": "link",
-      "note": "install as link: dependency to this folder in ~/.dsh/profiles/desktop/package.json; edit source + restart dsh to update. To publish later, add tarball/git URLs here."
+      "preferred": "tarball",
+      "tarball": "https://github.com/Q-998/dsh-plugin-wbrelay/archive/refs/heads/main.tar.gz",
+      "zip": "https://github.com/Q-998/dsh-plugin-wbrelay/archive/refs/heads/main.zip",
+      "git": "https://github.com/Q-998/dsh-plugin-wbrelay.git"
     }
   },
   "peerDependencies": {

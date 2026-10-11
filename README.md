@@ -89,33 +89,30 @@ CodeBuddy CLI 负责会话登录和授权。捕获代理在本机终结目标连
 
 ## 安装与加载
 
-### 克隆仓库
+### 从 dsh 插件页安装
+
+1. 打开 dsh 的 **插件** 页面，选择 **添加插件**。
+2. 在安装地址中粘贴仓库地址：
+
+   ```text
+   https://github.com/Q-998/dsh-plugin-wbrelay
+   ```
+
+3. 完成安装后选择 **立即启用**。若当前 profile 不支持热重载，重启 dsh 使插件生效。
+
+dsh 插件管理器会从 GitHub 获取插件包、注册 bundle，并将其加入当前 profile；无需手动编辑 profile 配置。
+
+### 使用 Git 克隆
+
+也可以先克隆仓库，再从 dsh 插件页添加本地目录：
 
 ```powershell
 git clone https://github.com/Q-998/dsh-plugin-wbrelay.git
 Set-Location dsh-plugin-wbrelay
+$PWD.Path
 ```
 
-### 注册插件
-
-将插件作为 dsh profile 的 link dependency，并在 profile 的 bundle 列表加入 `dsh-plugin-wbrelay`。配置结构如下：
-
-```json
-{
-  "dependencies": {
-    "dsh-plugin-wbrelay": "link:<plugin-source>"
-  },
-  "dsh": {
-    "profile": {
-      "bundles": [
-        "dsh-plugin-wbrelay"
-      ]
-    }
-  }
-}
-```
-
-保留 profile 中已有的依赖、bundle 和模型提供方配置，完成依赖安装后重启 dsh。插件源码更新后，重新加载 dsh bundle 即可生效。
+将命令输出的完整目录路径填入 **添加插件**，安装后选择 **立即启用**。
 
 ### 运行时证书
 
